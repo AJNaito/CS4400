@@ -1,0 +1,341 @@
+/*******************************************
+ * Solutions for the CS:APP Performance Lab
+ ********************************************/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include "defs.h"
+
+/* 
+ * Please fill in the following student struct 
+ */
+student_t student = {
+  "Aidan Naito",     /* Full name */
+  "u1280587@utah.edu",  /* Email address */
+};
+
+/***************
+ * COMPLEX KERNEL
+ ***************/
+
+/******************************************************
+ * Your different versions of the complex kernel go here
+ ******************************************************/
+
+/* 
+ * naive_complex - The naive baseline version of complex 
+ */
+char naive_complex_descr[] = "naive_complex: Naive baseline implementation";
+void naive_complex(int dim, pixel *src, pixel *dest)
+{
+  int i, j;
+
+  for(i = 0; i < dim; i++)
+    for(j = 0; j < dim; j++)
+    {
+
+      dest[RIDX(dim - j - 1, dim - i - 1, dim)].red = ((int)src[RIDX(i, j, dim)].red +
+						      (int)src[RIDX(i, j, dim)].green +
+						      (int)src[RIDX(i, j, dim)].blue) / 3;
+      
+      dest[RIDX(dim - j - 1, dim - i - 1, dim)].green = ((int)src[RIDX(i, j, dim)].red +
+							(int)src[RIDX(i, j, dim)].green +
+							(int)src[RIDX(i, j, dim)].blue) / 3;
+      
+      dest[RIDX(dim - j - 1, dim - i - 1, dim)].blue = ((int)src[RIDX(i, j, dim)].red +
+						       (int)src[RIDX(i, j, dim)].green +
+						       (int)src[RIDX(i, j, dim)].blue) / 3;
+
+    }
+}
+
+__attribute__((always_inline)) void complexImplementationV3(int dim, pixel *src, pixel *dest) {
+  
+}
+
+/**
+ * V2 Implementation - Adding loop unrolling 4x4 for now +
+ *  Common Expressions
+ */
+__attribute__((always_inline)) void complexImplementationV2(int dim, pixel* src, pixel* dest) {
+  int i, j, curSrcPos, curDestPos;
+
+  unsigned short avg1, avg2, avg3, avg4;
+
+  for (i = 0; i < dim; i ++) {
+    curSrcPos = i * dim;
+    curDestPos = (dim -1) * dim + (dim -i - 1);
+
+    for (j = 0; j < dim; j += 4) {
+      avg1 = (src[curSrcPos].red + src[curSrcPos].blue + src[curSrcPos].green) / 3;
+      avg2 = (src[curSrcPos + 1].red + src[curSrcPos + 1].blue + src[curSrcPos + 1].green) / 3;
+      avg3 = (src[curSrcPos + 2].red + src[curSrcPos + 2].blue + src[curSrcPos + 2].green) / 3;
+      avg4 = (src[curSrcPos + 3].red + src[curSrcPos + 3].blue + src[curSrcPos + 3].green) / 3;
+      
+      dest[curDestPos].red = avg1;
+      dest[curDestPos].blue = avg1;
+      dest[curDestPos].green = avg1;
+
+      dest[curDestPos - dim].red = avg2;
+      dest[curDestPos - dim].blue = avg2;
+      dest[curDestPos - dim].green = avg2;
+
+      // might be faster than doing a multiplication then subtraction
+      dest[curDestPos - dim - dim].red = avg3;
+      dest[curDestPos - dim - dim].blue = avg3;
+      dest[curDestPos - dim - dim].green = avg3;
+
+      dest[curDestPos - dim - dim - dim].red = avg4;
+      dest[curDestPos - dim - dim - dim].blue = avg4;
+      dest[curDestPos - dim - dim - dim].green = avg4;
+
+      // Destination is moving through columns
+      curDestPos -= 4 * dim;
+      // src is moving through rows
+      curSrcPos += 4;
+    }
+  }
+}
+
+
+/* 
+ * complex - Your current working version of complex
+ * IMPORTANT: This is the version you will be graded on
+ */
+char complex_descr[] = "complex: Current working version (2nd Try)";
+void complex(int dim, pixel *src, pixel *dest)
+{
+  complexImplementationV2(dim, src, dest);
+}
+
+/*********************************************************************
+ * register_complex_functions - Register all of your different versions
+ *     of the complex kernel with the driver by calling the
+ *     add_complex_function() for each test function. When you run the
+ *     driver program, it will test and report the performance of each
+ *     registered test function.  
+ *********************************************************************/
+
+void register_complex_functions() {
+  add_complex_function(&complex, complex_descr);
+  add_complex_function(&naive_complex, naive_complex_descr);
+}
+
+
+/***************
+ * MOTION KERNEL
+ **************/
+
+/***************************************************************
+ * Various helper functions for the motion kernel
+ * You may modify these or add new ones any way you like.
+ **************************************************************/
+
+
+/* 
+ * weighted_combo - Returns new pixel value at (i,j) 
+ */
+static pixel weighted_combo(int dim, int i, int j, pixel *src) 
+{
+  int ii, jj;
+  pixel current_pixel;
+
+  int red, green, blue;
+  red = green = blue = 0;
+
+  int num_neighbors = 0;
+  for(ii=0; ii < 3; ii++)
+    for(jj=0; jj < 3; jj++) 
+      if ((i + ii < dim) && (j + jj < dim)) 
+      {
+	num_neighbors++;
+	red += (int) src[RIDX(i+ii,j+jj,dim)].red;
+	green += (int) src[RIDX(i+ii,j+jj,dim)].green;
+	blue += (int) src[RIDX(i+ii,j+jj,dim)].blue;
+      }
+  
+  current_pixel.red = (unsigned short) (red / num_neighbors);
+  current_pixel.green = (unsigned short) (green / num_neighbors);
+  current_pixel.blue = (unsigned short) (blue / num_neighbors);
+  
+  return current_pixel;
+}
+
+/*
+ * 
+ */
+static pixel weighted_combo_V1(int dim, int i , int j, pixel* src) {
+  int ii, jj;
+  pixel current_pixel;
+
+  int red, green, blue, position;
+  red = green = blue = position = 0;
+
+  pixel* curPixel;
+
+  int num_neighbors = 0;
+  for (ii =0; ii < 3; i++) {
+    position = (i + ii) * dim + j;
+    
+    for (jj = 0; jj < 3; jj++) {
+      position += jj;
+
+      curPixel = &src[position];
+      
+      if ((i + ii < dim) && (j + jj < dim)) {
+	num_neighbors++;
+
+	red += (int)curPixel->red;
+	green += (int)curPixel->green;
+	blue += (int) curPixel->blue;
+      }
+    }
+  }
+  current_pixel.red = (unsigned short) (red / num_neighbors);
+  current_pixel.green = (unsigned short) (green / num_neighbors);
+  current_pixel.blue = (unsigned short) (blue / num_neighbors);
+
+  
+  return current_pixel;
+}
+
+static void weighted_combo_V4(int dim, int i, int j, pixel* src, pixel & dst) {
+  int ii, jj, iBound = 3, jBound = 3;
+
+  unsigned int red, green, blue, position;
+  red = green = blue = position = 0;
+
+  if (i > (dim - 4))
+    iBound = (i - (dim - 4));
+
+  if (j > (dim - 4))
+    jBound = (j - (dim - 4));
+
+  int num_neighbors = 0;
+  for (ii = 0; ii < iBound; ii++) {
+    position = (i + ii) * dim + j;
+
+    for (jj = 0; jj < jBound; jj++) {
+      position += jj;
+      num_neighbors++;
+
+      red += src[position].red;
+      green += src[position].green;
+      blue += src[position].blue;
+    }
+  }
+
+  dst.red = (unsigned short)(red / num_neighbors);
+  dst.green = (unsigned short)(green / num_neighbors);
+  dst.blue = (unsigned short)(blue / num_neighbors);
+}
+
+static void weighted_combo_V2(int dim, int i, int j, pixel* src, pixel* dst) {
+  int ii, jj, iBound = 3, jBound = 3;
+
+  unsigned int red, green, blue, position;
+  red = green = blue = position = 0;
+
+  if (i > (dim - 4))
+    iBound = (i - (dim - 4));
+
+  if (j > (dim - 4))
+    jBound = (j - (dim - 4));
+
+  int num_neighbors = 0;
+
+  for (ii = 0; ii < iBound; i++) {
+    position = (i + ii) * dim;
+
+    for (jj = 0; jj < jBound; jj++) {
+      position += (j + jj);
+      num_neighbors++;
+
+      red += src[position].red;
+      green += src[position].green;
+      blue += src[position].blue;
+    }
+  }
+
+  dst->red  = (unsigned short) red / num_neighbors;
+  dst->green  = (unsigned short) green / num_neighbors;
+  dst->blue  = (unsigned short) blue / num_neighbors;
+}
+
+
+
+/******************************************************
+ * Your different versions of the motion kernel go here
+ ******************************************************/
+
+
+/*
+ * naive_motion - The naive baseline version of motion 
+ */
+char naive_motion_descr[] = "naive_motion: Naive baseline implementation";
+void naive_motion(int dim, pixel *src, pixel *dst) 
+{
+  int i, j;
+    
+  for (i = 0; i < dim; i++)
+    for (j = 0; j < dim; j++)
+      dst[RIDX(i, j, dim)] = weighted_combo(dim, i, j, src);
+}
+
+
+/*
+ * motion - Your current working version of motion. 
+ * IMPORTANT: This is the version you will be graded on
+ */
+char motion_descr[] = "motion: Working Baseline";
+void motion(int dim, pixel *src, pixel *dst) 
+{
+  naive_motion(dim, src, dst);
+}
+
+char motionV1_descr[] = "motion: Used Common Expressions technique";
+void motionV1(int dim, pixel *src, pixel *dst) {
+  int i, j, curPos = 0;
+
+  for (i = 0; i < dim; i++) {
+    curPos = i * dim;
+    
+    for (j = 0; j < dim; j++) {
+      weighted_combo_V2(dim, i, j, src, &dst[curPos]);
+      curPos++;
+    }
+  }
+}
+
+/*
+ * Unrolling
+ */
+void motionV2(int dim, pixel *src, pixel* dst) {
+  int i, j, curPos = 0;
+
+  for (i = 0; i < dim; i++) {
+    curPos = i * dim;
+
+    for (j = 0; j < dim; j += 4) {
+      curPos += j;
+
+      dst[curPos] = weighted_combo(dim, i, j, src);
+      dst[curPos + 1] = weighted_combo(dim, i, j, src);
+      dst[curPos + 2] = weighted_combo(dim, i, j, src);
+      dst[curPos + 3] = weighted_combo(dim, i, j, src);
+    }
+  }
+}
+
+/********************************************************************* 
+ * register_motion_functions - Register all of your different versions
+ *     of the motion kernel with the driver by calling the
+ *     add_motion_function() for each test function.  When you run the
+ *     driver program, it will test and report the performance of each
+ *     registered test function.  
+ *********************************************************************/
+
+void register_motion_functions() {
+  add_motion_function(&motion, motion_descr);
+  add_motion_function(&naive_motion, naive_motion_descr);
+}
